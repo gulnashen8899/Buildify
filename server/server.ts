@@ -15,7 +15,8 @@ const port = process.env.PORT || 3000;
 
 
 const corsOptions={
-    origin:process.env.TRUSTED_ORIGINS?.split(',') || [],
+   // origin:process.env.TRUSTED_ORIGINS?.split(',') || [],
+     origin: true,
     credentials: true,
 }
 
