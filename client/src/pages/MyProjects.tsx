@@ -108,7 +108,7 @@ const MyProjects = () => {
         ) : (
           <div className='flex flex-col items-center justify-center h-[80vh] text-center'>
             <h1 className='text-3xl font-semibold text-gray-300'>You have no projects yet!</h1>
-            <button className='text-white px-5 py-2 mt-5 rounded-md bg-indigo-500
+            <button   onClick={() => navigate('/')} className='text-white px-5 py-2 mt-5 rounded-md bg-indigo-500
           '>Create New</button>
           </div>
         )}
