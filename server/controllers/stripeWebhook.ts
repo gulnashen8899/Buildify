@@ -28,45 +28,41 @@ export const stripeWebhook = async (request: Request, response: Response) => {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      const metadata = session.metadata as {
-        transactionId?: string;
-        appId?: string;
-      };
+      console.log("SESSION RECEIVED:", session.id);
+      console.log("METADATA:", session.metadata);
 
-      if (!metadata?.transactionId) {
-        console.log("Missing transactionId");
+      const transactionId = session.metadata?.transactionId;
+
+      if (!transactionId) {
+        console.log("❌ transactionId missing in metadata");
         return response.sendStatus(400);
       }
 
-      // 1. Find transaction
       const transaction = await prisma.transaction.findUnique({
-        where: { id: metadata.transactionId },
+        where: { id: transactionId },
       });
 
       if (!transaction) {
-        console.log("Transaction not found");
+        console.log("❌ Transaction not found:", transactionId);
         return response.sendStatus(400);
       }
 
-      // 2. Mark paid
       await prisma.transaction.update({
-        where: { id: metadata.transactionId },
+        where: { id: transactionId },
         data: { isPaid: true },
       });
 
-      console.log("Transaction marked paid");
+      console.log("✅ Transaction marked paid");
 
-      // 3. Get user
       const user = await prisma.user.findUnique({
         where: { id: transaction.userId },
       });
 
       if (!user) {
-        console.log("User not found");
+        console.log("❌ User not found:", transaction.userId);
         return response.sendStatus(400);
       }
 
-      // 4. Update credits safely
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -74,7 +70,7 @@ export const stripeWebhook = async (request: Request, response: Response) => {
         },
       });
 
-      console.log("Credits updated successfully");
+      console.log("✅ Credits updated successfully");
 
       break;
     }
