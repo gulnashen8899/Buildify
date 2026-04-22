@@ -27,33 +27,50 @@ export const stripeWebhook = async (request: Request, response: Response) => {
 
   switch (event.type) {
 
-    // ✅ HANDLE CHECKOUT SUCCESS
-    case 'checkout.session.completed': {
+    case 'payment_intent.succeeded': {
 
-      const session = event.data.object as Stripe.Checkout.Session;
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
-      console.log("SESSION METADATA:", session.metadata);
+      console.log("PAYMENT INTENT RECEIVED:", paymentIntent.id);
 
-      const transactionId = session.metadata?.transactionId;
+      const sessionList = await stripe.checkout.sessions.list({
+        payment_intent: paymentIntent.id,
+      });
 
-      if (!transactionId) {
-        console.log("❌ Missing transactionId");
-        return response.sendStatus(400);
+      const session = sessionList.data[0];
+
+      if (!session) {
+        console.log("❌ No checkout session found");
+        break;
+      }
+
+      const metadata = session.metadata as {
+        transactionId?: string;
+        appId?: string;
+      };
+
+      console.log("SESSION METADATA:", metadata);
+
+      if (!metadata?.transactionId) {
+        console.log("❌ transactionId missing");
+        break;
       }
 
       const transaction = await prisma.transaction.findUnique({
-        where: { id: transactionId },
+        where: { id: metadata.transactionId },
       });
 
       if (!transaction) {
         console.log("❌ Transaction not found");
-        return response.sendStatus(400);
+        break;
       }
 
       await prisma.transaction.update({
-        where: { id: transactionId },
+        where: { id: metadata.transactionId },
         data: { isPaid: true },
       });
+
+      console.log("✅ Transaction marked paid");
 
       const user = await prisma.user.findUnique({
         where: { id: transaction.userId },
@@ -61,24 +78,20 @@ export const stripeWebhook = async (request: Request, response: Response) => {
 
       if (!user) {
         console.log("❌ User not found");
-        return response.sendStatus(400);
+        break;
       }
 
       await prisma.user.update({
         where: { id: user.id },
         data: {
-          credits: Number(user.credits || 0) + Number(transaction.credits || 0),
+          credits: {
+            increment: transaction.credits,
+          },
         },
       });
 
       console.log("✅ Credits updated successfully");
 
-      break;
-    }
-
-    // ✅ SAFETY: if Stripe sends payment_intent instead
-    case 'payment_intent.succeeded': {
-      console.log("⚠️ payment_intent.succeeded received (ignored)");
       break;
     }
 
