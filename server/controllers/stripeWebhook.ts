@@ -23,18 +23,21 @@ export const stripeWebhook = async (request: Request, response: Response) => {
     return response.sendStatus(400);
   }
 
+  console.log("EVENT TYPE:", event.type);
+
   switch (event.type) {
 
+    // ✅ HANDLE CHECKOUT SUCCESS
     case 'checkout.session.completed': {
+
       const session = event.data.object as Stripe.Checkout.Session;
 
-      console.log("SESSION RECEIVED:", session.id);
-      console.log("METADATA:", session.metadata);
+      console.log("SESSION METADATA:", session.metadata);
 
       const transactionId = session.metadata?.transactionId;
 
       if (!transactionId) {
-        console.log("❌ transactionId missing in metadata");
+        console.log("❌ Missing transactionId");
         return response.sendStatus(400);
       }
 
@@ -43,7 +46,7 @@ export const stripeWebhook = async (request: Request, response: Response) => {
       });
 
       if (!transaction) {
-        console.log("❌ Transaction not found:", transactionId);
+        console.log("❌ Transaction not found");
         return response.sendStatus(400);
       }
 
@@ -52,14 +55,12 @@ export const stripeWebhook = async (request: Request, response: Response) => {
         data: { isPaid: true },
       });
 
-      console.log("✅ Transaction marked paid");
-
       const user = await prisma.user.findUnique({
         where: { id: transaction.userId },
       });
 
       if (!user) {
-        console.log("❌ User not found:", transaction.userId);
+        console.log("❌ User not found");
         return response.sendStatus(400);
       }
 
@@ -72,6 +73,12 @@ export const stripeWebhook = async (request: Request, response: Response) => {
 
       console.log("✅ Credits updated successfully");
 
+      break;
+    }
+
+    // ✅ SAFETY: if Stripe sends payment_intent instead
+    case 'payment_intent.succeeded': {
+      console.log("⚠️ payment_intent.succeeded received (ignored)");
       break;
     }
 
