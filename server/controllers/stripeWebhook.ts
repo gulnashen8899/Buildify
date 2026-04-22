@@ -19,7 +19,7 @@ export const stripeWebhook = async (request: Request, response: Response) => {
       endpointSecret
     );
   } catch (err: any) {
-    console.log('⚠️ Webhook signature verification failed:', err.message);
+    console.log('Webhook signature failed:', err.message);
     return response.sendStatus(400);
   }
 
@@ -33,45 +33,55 @@ export const stripeWebhook = async (request: Request, response: Response) => {
         appId?: string;
       };
 
-      console.log("Webhook received session:", session.id);
-      console.log("Metadata:", metadata);
-
       if (!metadata?.transactionId) {
-        console.log("❌ Missing transactionId");
+        console.log("Missing transactionId");
         return response.sendStatus(400);
       }
 
-      try {
-        // 1. Update transaction
-        const transaction = await prisma.transaction.update({
-          where: { id: metadata.transactionId },
-          data: { isPaid: true },
-        });
+      // 1. Find transaction
+      const transaction = await prisma.transaction.findUnique({
+        where: { id: metadata.transactionId },
+      });
 
-        console.log("✅ Transaction updated:", transaction.id);
-
-        // 2. Update user credits
-        const userUpdate = await prisma.user.update({
-          where: { id: transaction.userId },
-          data: {
-            credits: {
-              increment: transaction.credits,
-            },
-          },
-        });
-
-        console.log("✅ User credits updated:", userUpdate.id);
-
-      } catch (error) {
-        console.log("❌ DB UPDATE ERROR:", error);
+      if (!transaction) {
+        console.log("Transaction not found");
+        return response.sendStatus(400);
       }
+
+      // 2. Mark paid
+      await prisma.transaction.update({
+        where: { id: metadata.transactionId },
+        data: { isPaid: true },
+      });
+
+      console.log("Transaction marked paid");
+
+      // 3. Get user
+      const user = await prisma.user.findUnique({
+        where: { id: transaction.userId },
+      });
+
+      if (!user) {
+        console.log("User not found");
+        return response.sendStatus(400);
+      }
+
+      // 4. Update credits safely
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          credits: Number(user.credits || 0) + Number(transaction.credits || 0),
+        },
+      });
+
+      console.log("Credits updated successfully");
 
       break;
     }
 
     default:
-      console.log(`Unhandled event type: ${event.type}`);
+      console.log("Unhandled event:", event.type);
   }
 
-  response.json({ received: true });
+  return response.json({ received: true });
 };
